@@ -1,37 +1,179 @@
 import { useParams, useLocation } from "wouter";
-import { getAdminToken } from "@/lib/gameStorage";
+import { getAdminToken, getSavedBoardSets, createBoardSet, saveBoardSet, deleteBoardSet, type SavedBoardSet } from "@/lib/gameStorage";
 import { useGameWebSocket } from "@/lib/useWebSocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Users, Shuffle, Play, ChevronRight, Copy, Check,
   Lock, SkipForward, Trophy, Upload, Download, Pencil,
-  Eye, ArrowRight, CheckCircle2, XCircle, RotateCcw
+  Eye, ArrowRight, CheckCircle2, XCircle, RotateCcw,
+  Plus, Trash2, FolderOpen, ClipboardCopy, ClipboardPaste, Save
 } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Player, Team, GameBoard, GameBoardExport } from "@shared/schema";
+
+function emptyClues(): string[] {
+  return ["", "", "", "", ""];
+}
+
+function BoardEditor({
+  initialBoards,
+  initialName,
+  onSave,
+  onCancel,
+}: {
+  initialBoards: GameBoard[];
+  initialName: string;
+  onSave: (name: string, boards: GameBoard[]) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [boards, setBoards] = useState<GameBoard[]>(
+    initialBoards.length > 0 ? initialBoards : [{ answer: "", clues: emptyClues() }]
+  );
+
+  function updateBoard(index: number, field: "answer", value: string): void;
+  function updateBoard(index: number, field: "clue", value: string, clueIndex: number): void;
+  function updateBoard(index: number, field: "answer" | "clue", value: string, clueIndex?: number) {
+    setBoards((prev) => {
+      const updated = [...prev];
+      if (field === "answer") {
+        updated[index] = { ...updated[index], answer: value };
+      } else if (field === "clue" && clueIndex !== undefined) {
+        const clues = [...updated[index].clues];
+        clues[clueIndex] = value;
+        updated[index] = { ...updated[index], clues };
+      }
+      return updated;
+    });
+  }
+
+  function addBoard() {
+    setBoards((prev) => [...prev, { answer: "", clues: emptyClues() }]);
+  }
+
+  function removeBoard(index: number) {
+    setBoards((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const isValid = name.trim() && boards.length > 0 && boards.every(
+    (b) => b.answer.trim() && b.clues.every((c) => c.trim())
+  );
+
+  const clueLabels = ["Ledtråd 1 (svårast)", "Ledtråd 2", "Ledtråd 3", "Ledtråd 4", "Ledtråd 5 (lättast)"];
+
+  return (
+    <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
+      <div>
+        <label className="text-sm font-medium mb-1 block">Namn på spelbrädet</label>
+        <Input
+          data-testid="input-board-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="T.ex. Matematik åk 8"
+        />
+      </div>
+
+      {boards.map((board, bi) => (
+        <Card key={bi}>
+          <CardContent className="pt-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">Fråga {bi + 1}</span>
+              {boards.length > 1 && (
+                <Button
+                  data-testid={`button-remove-question-${bi}`}
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => removeBoard(bi)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Svar</label>
+              <Input
+                data-testid={`input-answer-${bi}`}
+                value={board.answer}
+                onChange={(e) => updateBoard(bi, "answer", e.target.value)}
+                placeholder="Rätt svar"
+              />
+            </div>
+            {board.clues.map((clue, ci) => (
+              <div key={ci}>
+                <label className="text-xs text-muted-foreground mb-1 block">{clueLabels[ci]}</label>
+                <Input
+                  data-testid={`input-clue-${bi}-${ci}`}
+                  value={clue}
+                  onChange={(e) => updateBoard(bi, "clue", e.target.value, ci)}
+                  placeholder={clueLabels[ci]}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+
+      {boards.length < 10 && (
+        <Button
+          data-testid="button-add-question"
+          variant="outline"
+          className="gap-2"
+          onClick={addBoard}
+        >
+          <Plus className="w-4 h-4" />
+          Lägg till fråga
+        </Button>
+      )}
+
+      <div className="flex gap-2 justify-end sticky bottom-0 bg-background pt-2">
+        <Button data-testid="button-cancel-edit" variant="outline" onClick={onCancel}>
+          Avbryt
+        </Button>
+        <Button
+          data-testid="button-save-board"
+          disabled={!isValid}
+          onClick={() => onSave(name.trim(), boards)}
+          className="gap-2"
+        >
+          <Save className="w-4 h-4" />
+          Spara
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId || "";
   const [, setLocation] = useLocation();
   const adminToken = getAdminToken(sessionId);
-  const { session, connected, send } = useGameWebSocket(sessionId, null);
+  const { session, connected } = useGameWebSocket(sessionId, null);
   const [teamSize, setTeamSize] = useState(3);
   const [copied, setCopied] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+
+  const [savedBoardSets, setSavedBoardSets] = useState<SavedBoardSet[]>([]);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingBoardSet, setEditingBoardSet] = useState<SavedBoardSet | null>(null);
+  const [importJsonOpen, setImportJsonOpen] = useState(false);
   const [importJson, setImportJson] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
   const [importError, setImportError] = useState("");
-  const [boardEditorOpen, setBoardEditorOpen] = useState(false);
+  const [exportJson, setExportJson] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+
+  useEffect(() => {
+    setSavedBoardSets(getSavedBoardSets());
+  }, []);
 
   useEffect(() => {
     if (!adminToken) {
@@ -48,6 +190,91 @@ export default function AdminPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [shareUrl]);
+
+  function refreshSavedBoards() {
+    setSavedBoardSets(getSavedBoardSets());
+  }
+
+  function handleCreateNewBoard() {
+    setEditingBoardSet(null);
+    setEditorOpen(true);
+  }
+
+  function handleEditBoard(boardSet: SavedBoardSet) {
+    setEditingBoardSet(boardSet);
+    setEditorOpen(true);
+  }
+
+  function handleDeleteBoard(id: string) {
+    deleteBoardSet(id);
+    refreshSavedBoards();
+  }
+
+  function handleSaveBoard(name: string, boards: GameBoard[]) {
+    if (editingBoardSet) {
+      saveBoardSet({ ...editingBoardSet, name, boards, updatedAt: Date.now() });
+    } else {
+      createBoardSet(name, boards);
+    }
+    refreshSavedBoards();
+    setEditorOpen(false);
+    setEditingBoardSet(null);
+  }
+
+  async function handleSelectBoard(boardSet: SavedBoardSet) {
+    try {
+      await apiRequest("POST", `/api/sessions/${sessionId}/boards`, {
+        adminToken,
+        boards: boardSet.boards,
+      });
+    } catch (e) {
+      console.error("Failed to load board", e);
+    }
+  }
+
+  function handleImportFromJson() {
+    try {
+      setImportError("");
+      const parsed = JSON.parse(importJson);
+      const boards: GameBoard[] = parsed.boards || (Array.isArray(parsed) ? parsed : [parsed]);
+      if (!Array.isArray(boards) || boards.length === 0) {
+        setImportError("Ingen frågor hittades i JSON");
+        return;
+      }
+      if (boards.length > 10) {
+        setImportError("Max 10 frågor per spelbräde");
+        return;
+      }
+      for (const b of boards) {
+        if (!b.answer || !Array.isArray(b.clues) || b.clues.length !== 5) {
+          setImportError("Varje fråga måste ha ett svar och exakt 5 ledtrådar");
+          return;
+        }
+      }
+      const name = parsed.title || `Importerat ${new Date().toLocaleDateString("sv-SE")}`;
+      createBoardSet(name, boards);
+      refreshSavedBoards();
+      setImportJsonOpen(false);
+      setImportJson("");
+    } catch (e: any) {
+      setImportError("Ogiltig JSON: " + (e.message || ""));
+    }
+  }
+
+  function handleExportBoardSet(boardSet: SavedBoardSet) {
+    const exported: GameBoardExport = {
+      title: boardSet.name,
+      boards: boardSet.boards,
+    };
+    setExportJson(JSON.stringify(exported, null, 2));
+    setExportOpen(true);
+  }
+
+  function handleCopyExportJson() {
+    navigator.clipboard.writeText(exportJson);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  }
 
   async function handleRenameSave(playerId: string) {
     try {
@@ -70,37 +297,6 @@ export default function AdminPage() {
     } catch (e) {
       console.error("Failed to randomize teams", e);
     }
-  }
-
-  async function handleImportBoard() {
-    try {
-      setImportError("");
-      const parsed = JSON.parse(importJson);
-      const boards = parsed.boards || parsed;
-      await apiRequest("POST", `/api/sessions/${sessionId}/boards`, {
-        adminToken,
-        boards: Array.isArray(boards) ? boards : [boards],
-      });
-      setImportOpen(false);
-      setImportJson("");
-    } catch (e: any) {
-      setImportError(e.message || "Ogiltig JSON");
-    }
-  }
-
-  function handleExportBoard() {
-    if (!session?.boards.length) return;
-    const exported: GameBoardExport = {
-      title: "På Spåret - Spelbräde",
-      boards: session.boards,
-    };
-    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "spelbrade.json";
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   async function handleStartGame() {
@@ -279,15 +475,15 @@ export default function AdminPage() {
                         data-testid="slider-team-size"
                         value={[teamSize]}
                         onValueChange={(v) => setTeamSize(v[0])}
-                        min={2}
-                        max={Math.max(2, Math.min(10, session.players.length))}
+                        min={1}
+                        max={8}
                         step={1}
                       />
                     </div>
                     <Button
                       data-testid="button-randomize-teams"
                       onClick={handleRandomizeTeams}
-                      disabled={session.players.length < 2}
+                      disabled={session.players.length < 1}
                       className="gap-2"
                     >
                       <Shuffle className="w-4 h-4" />
@@ -297,91 +493,140 @@ export default function AdminPage() {
                 </Card>
 
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between gap-2">
                     <CardTitle className="text-lg flex items-center gap-2">
-                      <Upload className="w-5 h-5" />
-                      Spelbräde
+                      <FolderOpen className="w-5 h-5" />
+                      Spelbräden
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
-                    {session.boards.length > 0 ? (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-sm text-muted-foreground">
-                          {session.boards.length} frågor laddade
+                    {session.boards.length > 0 && (
+                      <div className="p-3 rounded-md bg-primary/5 border border-primary/20">
+                        <p className="text-sm font-medium text-primary mb-1">
+                          Aktivt spelbräde: {session.boards.length} frågor
                         </p>
-                        {session.boards.map((b: GameBoard, i: number) => (
-                          <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50">
-                            <Badge variant="secondary">{i + 1}</Badge>
-                            <span className="font-medium truncate">{b.answer}</span>
+                        <div className="flex flex-col gap-1">
+                          {session.boards.map((b: GameBoard, i: number) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                              <Badge variant="secondary">{i + 1}</Badge>
+                              <span className="truncate">{b.answer}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {savedBoardSets.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Sparade spelbräden</p>
+                        {savedBoardSets.map((bs) => (
+                          <div
+                            key={bs.id}
+                            data-testid={`board-set-${bs.id}`}
+                            className="flex items-center gap-2 p-2 rounded-md bg-muted/50"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{bs.name}</p>
+                              <p className="text-xs text-muted-foreground">{bs.boards.length} frågor</p>
+                            </div>
+                            <Button
+                              data-testid={`button-select-board-${bs.id}`}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSelectBoard(bs)}
+                              className="gap-1 shrink-0"
+                            >
+                              <Play className="w-3 h-3" />
+                              Välj
+                            </Button>
+                            <Button
+                              data-testid={`button-export-board-${bs.id}`}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleExportBoardSet(bs)}
+                            >
+                              <ClipboardCopy className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              data-testid={`button-edit-board-${bs.id}`}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleEditBoard(bs)}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              data-testid={`button-delete-board-${bs.id}`}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleDeleteBoard(bs.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         ))}
                       </div>
-                    ) : (
+                    )}
+
+                    {savedBoardSets.length === 0 && session.boards.length === 0 && (
                       <p className="text-sm text-muted-foreground text-center py-2">
-                        Inget spelbräde laddat
+                        Inga spelbräden sparade. Skapa ett nytt eller klistra in JSON.
                       </p>
                     )}
 
                     <div className="flex gap-2">
-                      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+                      <Button
+                        data-testid="button-create-board"
+                        variant="outline"
+                        className="flex-1 gap-2"
+                        onClick={handleCreateNewBoard}
+                      >
+                        <Plus className="w-4 h-4" />
+                        Skapa nytt
+                      </Button>
+                      <Dialog open={importJsonOpen} onOpenChange={setImportJsonOpen}>
                         <DialogTrigger asChild>
                           <Button data-testid="button-import-board" variant="outline" className="flex-1 gap-2">
-                            <Upload className="w-4 h-4" />
-                            Importera JSON
+                            <ClipboardPaste className="w-4 h-4" />
+                            Klistra in JSON
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-2xl">
                           <DialogHeader>
-                            <DialogTitle>Importera spelbräde</DialogTitle>
+                            <DialogTitle>Importera spelbräde från JSON</DialogTitle>
                           </DialogHeader>
-                          <div className="flex flex-col gap-4">
-                            <Textarea
-                              data-testid="textarea-import-json"
-                              placeholder={`{
+                          <p className="text-sm text-muted-foreground">
+                            Klistra in JSON som du fått från en kollega för att spara spelbrädet.
+                          </p>
+                          <Textarea
+                            data-testid="textarea-import-json"
+                            placeholder={`{
+  "title": "Mitt spelbräde",
   "boards": [
     {
-      "answer": "Pythagorassats",
-      "clues": [
-        "Svåraste ledtråden...",
-        "Lite enklare...",
-        "Medel...",
-        "Ganska lätt...",
-        "Facit: a² + b² = c²"
-      ]
+      "answer": "Svaret",
+      "clues": ["Svårast", "Svår", "Medel", "Lätt", "Lättast"]
     }
   ]
 }`}
-                              value={importJson}
-                              onChange={(e) => setImportJson(e.target.value)}
-                              className="min-h-[300px] font-mono text-sm"
-                            />
-                            {importError && (
-                              <p className="text-destructive text-sm">{importError}</p>
-                            )}
-                            <Button
-                              data-testid="button-confirm-import"
-                              onClick={handleImportBoard}
-                              disabled={!importJson.trim()}
-                              className="gap-2"
-                            >
-                              <Upload className="w-4 h-4" />
-                              Importera
-                            </Button>
-                          </div>
+                            value={importJson}
+                            onChange={(e) => setImportJson(e.target.value)}
+                            className="min-h-[250px] font-mono text-sm"
+                          />
+                          {importError && (
+                            <p className="text-destructive text-sm">{importError}</p>
+                          )}
+                          <Button
+                            data-testid="button-confirm-import"
+                            onClick={handleImportFromJson}
+                            disabled={!importJson.trim()}
+                            className="gap-2"
+                          >
+                            <Upload className="w-4 h-4" />
+                            Importera & spara
+                          </Button>
                         </DialogContent>
                       </Dialog>
-
-                      {session.boards.length > 0 && (
-                        <Button
-                          data-testid="button-export-board"
-                          variant="outline"
-                          className="gap-2"
-                          onClick={handleExportBoard}
-                        >
-                          <Download className="w-4 h-4" />
-                          Exportera
-                        </Button>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -471,6 +716,7 @@ export default function AdminPage() {
               data-testid="button-start-game"
               size="lg"
               className="gap-2 self-center"
+              disabled={session.boards.length === 0}
               onClick={handleStartGame}
             >
               <Play className="w-5 h-5" />
@@ -736,6 +982,50 @@ export default function AdminPage() {
           </div>
         )}
       </main>
+
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingBoardSet ? "Redigera spelbräde" : "Skapa nytt spelbräde"}
+            </DialogTitle>
+          </DialogHeader>
+          <BoardEditor
+            initialBoards={editingBoardSet?.boards || []}
+            initialName={editingBoardSet?.name || ""}
+            onSave={handleSaveBoard}
+            onCancel={() => {
+              setEditorOpen(false);
+              setEditingBoardSet(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Dela spelbräde</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Kopiera texten nedan och skicka den till en kollega. De kan klistra in den med "Klistra in JSON".
+          </p>
+          <Textarea
+            data-testid="textarea-export-json"
+            value={exportJson}
+            readOnly
+            className="min-h-[250px] font-mono text-sm"
+          />
+          <Button
+            data-testid="button-copy-json"
+            onClick={handleCopyExportJson}
+            className="gap-2"
+          >
+            {copiedJson ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
+            {copiedJson ? "Kopierat!" : "Kopiera JSON"}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

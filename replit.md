@@ -7,6 +7,7 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui components + wouter routing
 - **Backend**: Express + WebSocket (ws) for real-time game state
 - **Storage**: In-memory (MemStorage) - game sessions are ephemeral
+- **Board Storage**: localStorage - saved board sets persist in browser
 
 ## Key Routes
 - `/` - Creates new session, redirects to admin
@@ -36,14 +37,23 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
 ## Game Flow
 1. Teacher visits `/` → session created → redirected to admin
 2. Students visit `/:sessionId` → enter name → redirected to play
-3. Admin randomizes teams with slider for team size
-4. Admin imports game board JSON (10 answers × 5 clues each)
+3. Admin creates/selects a game board (saved in localStorage) or imports JSON
+4. Admin randomizes teams with slider for team size (1-8 per team)
 5. Admin starts game → clues shown progressively
 6. Teams lock/pass answers → admin reveals → scoring → next question
+
+## Board Management
+- Boards are saved as "board sets" in localStorage (key: `pa_sparet_saved_boards`)
+- Each board set has: id, name, boards[], createdAt, updatedAt
+- Admin can create, edit, delete board sets via in-browser editor
+- Admin selects a board set to load into the active session
+- Boards can be shared between teachers by exporting/importing JSON
+- Max 10 questions per board, each with exactly 5 clues
 
 ## JSON Board Format
 ```json
 {
+  "title": "Board name",
   "boards": [
     {
       "answer": "Answer text",
@@ -52,3 +62,9 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
   ]
 }
 ```
+
+## Recent Changes
+- 2026-02-08: Added full board manager (create/edit/delete/select) with localStorage persistence
+- 2026-02-08: Added JSON import/export for sharing boards between colleagues
+- 2026-02-08: Changed team size slider range to 1-8 (was 2-10)
+- 2026-02-08: Start game button disabled when no board is loaded
