@@ -31,8 +31,14 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
 
 ## WebSocket
 - Path: `/ws?sessionId=xxx&playerId=yyy`
-- Messages from client: `lock_answer`, `pass`, `unlock`
+- Messages from client: `lock_answer` (individual player locking)
 - Messages from server: `session_update`
+
+## Scoring System
+- Each player answers individually; points contribute to team total
+- Points per clue (descending): 10p, 8p, 6p, 4p, 2p (CLUE_POINTS constant)
+- Players lock answers once per question; earlier correct answers = more points
+- Admin reveals answer → server checks correctness and awards points
 
 ## Game Flow
 1. Teacher visits `/` → session created → redirected to admin
@@ -40,7 +46,7 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
 3. Admin creates/selects a game board (saved in localStorage) or imports JSON
 4. Admin randomizes teams with slider for team size (1-8 per team)
 5. Admin starts game → clues shown progressively
-6. Teams lock/pass answers → admin reveals → scoring → next question
+6. Players individually lock answers → admin reveals → scoring → next question
 
 ## Board Management
 - Boards are saved as "board sets" in localStorage (key: `pa_sparet_saved_boards`)
@@ -64,6 +70,12 @@ Interactive classroom quiz game inspired by the Swedish TV show "På Spåret". T
 ```
 
 ## Recent Changes
+- 2026-02-08: Individual player scoring system - each player answers independently, points contribute to team total
+- 2026-02-08: Points per clue: 10p, 8p, 6p, 4p, 2p (CLUE_POINTS constant in schema)
+- 2026-02-08: Colorful gradient UI theme (indigo-950/purple-950 backgrounds, amber-400/orange-500 accents)
+- 2026-02-08: Game rules card displayed on player view showing scoring info
+- 2026-02-08: Admin lobby view hides answers/facit (projector-safe)
+- 2026-02-08: Admin shows individual player lock status and points during gameplay
 - 2026-02-08: Added full board manager (create/edit/delete/select) with localStorage persistence
 - 2026-02-08: Added JSON import/export for sharing boards between colleagues
 - 2026-02-08: Changed team size slider range to 1-8 (was 2-10)
