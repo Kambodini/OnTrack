@@ -10,7 +10,7 @@ export interface GameSession {
   boards: GameBoard[];
   currentBoardIndex: number;
   currentClueIndex: number;
-  gameState: "lobby" | "teams" | "playing" | "revealing" | "finished";
+  gameState: "lobby" | "playing" | "revealing" | "finished";
   teamSize: number;
 }
 
@@ -21,6 +21,7 @@ export interface Player {
   teamId: string | null;
   answers: PlayerAnswer[];
   score: number;
+  banned: boolean;
 }
 
 export interface PlayerAnswer {

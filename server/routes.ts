@@ -58,7 +58,7 @@ export async function registerRoutes(
         const session = await storage.getSession(sessionId);
         if (!session) return;
         const player = session.players.find((p) => p.id === playerId);
-        if (!player || !player.teamId) return;
+        if (!player || !player.teamId || player.banned) return;
 
         if (msg.type === "lock_answer" && msg.answer) {
           await storage.lockPlayerAnswer(sessionId, playerId, msg.answer);
@@ -126,6 +126,80 @@ export async function registerRoutes(
 
       broadcastToSession(req.params.id);
       res.json(player);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/sessions/:id/players/:playerId", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.adminToken !== req.body.adminToken) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      await storage.removePlayer(req.params.id, req.params.playerId);
+      broadcastToSession(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/players/:playerId/ban", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.adminToken !== req.body.adminToken) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      await storage.banPlayer(req.params.id, req.params.playerId);
+      broadcastToSession(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/players/:playerId/override", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.adminToken !== req.body.adminToken) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const { boardIndex, correct } = req.body;
+      if (boardIndex === undefined || correct === undefined) {
+        return res.status(400).json({ message: "Missing boardIndex or correct" });
+      }
+
+      await storage.overridePlayerAnswer(req.params.id, req.params.playerId, boardIndex, correct);
+      broadcastToSession(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/sessions/:id/players/:playerId/penalize", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.adminToken !== req.body.adminToken) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const { points } = req.body;
+      if (!points || points <= 0) {
+        return res.status(400).json({ message: "Invalid points" });
+      }
+
+      await storage.penalizePlayer(req.params.id, req.params.playerId, points);
+      broadcastToSession(req.params.id);
+      res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -44,12 +44,15 @@ export interface IStorage {
   addPlayer(sessionId: string, name: string): Promise<Player>;
   updatePlayerName(sessionId: string, playerId: string, name: string): Promise<Player | undefined>;
   removePlayer(sessionId: string, playerId: string): Promise<void>;
+  banPlayer(sessionId: string, playerId: string): Promise<void>;
   randomizeTeams(sessionId: string, teamSize: number): Promise<Team[]>;
   setBoards(sessionId: string, boards: GameBoard[]): Promise<void>;
   startGame(sessionId: string): Promise<void>;
   nextClue(sessionId: string): Promise<number>;
   lockPlayerAnswer(sessionId: string, playerId: string, answer: string): Promise<void>;
   revealAnswer(sessionId: string): Promise<void>;
+  overridePlayerAnswer(sessionId: string, playerId: string, boardIndex: number, correct: boolean): Promise<void>;
+  penalizePlayer(sessionId: string, playerId: string, points: number): Promise<void>;
   nextQuestion(sessionId: string): Promise<void>;
   finishGame(sessionId: string): Promise<void>;
   resetSession(sessionId: string): Promise<void>;
@@ -102,6 +105,7 @@ export class MemStorage implements IStorage {
       teamId: null,
       answers: [],
       score: 0,
+      banned: false,
     };
     session.players.push(player);
     return player;
@@ -119,14 +123,41 @@ export class MemStorage implements IStorage {
   async removePlayer(sessionId: string, playerId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    const player = session.players.find((p) => p.id === playerId);
+    if (player && player.teamId) {
+      const team = session.teams.find((t) => t.id === player.teamId);
+      if (team) {
+        team.score -= player.score;
+        if (team.score < 0) team.score = 0;
+        team.players = team.players.filter((id) => id !== playerId);
+      }
+    }
     session.players = session.players.filter((p) => p.id !== playerId);
+  }
+
+  async banPlayer(sessionId: string, playerId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const player = session.players.find((p) => p.id === playerId);
+    if (!player) return;
+    player.banned = true;
+    for (const team of session.teams) {
+      team.players = team.players.filter((id) => id !== playerId);
+    }
+    const team = session.teams.find((t) => t.id === player.teamId);
+    if (team) {
+      team.score -= player.score;
+      if (team.score < 0) team.score = 0;
+    }
+    player.teamId = null;
   }
 
   async randomizeTeams(sessionId: string, teamSize: number): Promise<Team[]> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error("Session not found");
 
-    const shuffled = [...session.players].sort(() => Math.random() - 0.5);
+    const activePlayers = session.players.filter((p) => !p.banned);
+    const shuffled = [...activePlayers].sort(() => Math.random() - 0.5);
     const numTeams = Math.ceil(shuffled.length / teamSize);
     const colors = getDistinctColors(numTeams);
     const usedNameIndexes = new Set<number>();
@@ -156,7 +187,6 @@ export class MemStorage implements IStorage {
 
     session.teams = teams;
     session.teamSize = teamSize;
-    session.gameState = "teams";
     return teams;
   }
 
@@ -190,8 +220,11 @@ export class MemStorage implements IStorage {
     if (!session) throw new Error("Session not found");
     const player = session.players.find((p) => p.id === playerId);
     if (!player) throw new Error("Player not found");
+    if (player.banned) return;
 
-    let existing = player.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+    const existing = player.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+    if (existing && existing.locked) return;
+
     if (existing) {
       existing.answer = answer;
       existing.locked = true;
@@ -219,7 +252,7 @@ export class MemStorage implements IStorage {
 
     for (const team of session.teams) {
       let teamRoundPoints = 0;
-      const teamPlayers = session.players.filter((p) => p.teamId === team.id);
+      const teamPlayers = session.players.filter((p) => p.teamId === team.id && !p.banned);
 
       for (const player of teamPlayers) {
         const pAnswer = player.answers.find((a) => a.boardIndex === session.currentBoardIndex);
@@ -246,6 +279,45 @@ export class MemStorage implements IStorage {
     session.gameState = "revealing";
   }
 
+  async overridePlayerAnswer(sessionId: string, playerId: string, boardIndex: number, correct: boolean): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error("Session not found");
+    const player = session.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("Player not found");
+
+    const pAnswer = player.answers.find((a) => a.boardIndex === boardIndex);
+    if (!pAnswer || !pAnswer.locked) return;
+
+    const wasCorrect = pAnswer.correct;
+    const oldPoints = pAnswer.pointsAwarded;
+
+    if (correct && !wasCorrect) {
+      const points = CLUE_POINTS[pAnswer.lockedAtClue] || 2;
+      pAnswer.correct = true;
+      pAnswer.pointsAwarded = points;
+      player.score += points;
+      const team = session.teams.find((t) => t.id === player.teamId);
+      if (team) team.score += points;
+    } else if (!correct && wasCorrect) {
+      pAnswer.correct = false;
+      player.score -= oldPoints;
+      pAnswer.pointsAwarded = 0;
+      const team = session.teams.find((t) => t.id === player.teamId);
+      if (team) team.score -= oldPoints;
+    }
+  }
+
+  async penalizePlayer(sessionId: string, playerId: string, points: number): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error("Session not found");
+    const player = session.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("Player not found");
+
+    player.score -= points;
+    const team = session.teams.find((t) => t.id === player.teamId);
+    if (team) team.score -= points;
+  }
+
   async nextQuestion(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error("Session not found");
@@ -267,6 +339,7 @@ export class MemStorage implements IStorage {
     session.currentBoardIndex = 0;
     session.currentClueIndex = 0;
     session.gameState = "lobby";
+    session.players = session.players.filter((p) => !p.banned);
     session.players.forEach((p) => {
       p.teamId = null;
       p.answers = [];

@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Users, Shuffle, Play, ChevronRight, Copy, Check,
   Lock, Trophy, Upload, Pencil,
   Eye, ArrowRight, CheckCircle2, XCircle, RotateCcw,
-  Plus, Trash2, FolderOpen, ClipboardCopy, ClipboardPaste, Save
+  Plus, Trash2, FolderOpen, ClipboardCopy, ClipboardPaste, Save,
+  Ban, MinusCircle, UserX
 } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -295,6 +297,45 @@ export default function AdminPage() {
     }
   }
 
+  async function handleRemovePlayer(playerId: string) {
+    try {
+      await apiRequest("DELETE", `/api/sessions/${sessionId}/players/${playerId}`, { adminToken });
+    } catch (e) {
+      console.error("Failed to remove player", e);
+    }
+  }
+
+  async function handleBanPlayer(playerId: string) {
+    try {
+      await apiRequest("POST", `/api/sessions/${sessionId}/players/${playerId}/ban`, { adminToken });
+    } catch (e) {
+      console.error("Failed to ban player", e);
+    }
+  }
+
+  async function handleOverrideAnswer(playerId: string, boardIndex: number, correct: boolean) {
+    try {
+      await apiRequest("POST", `/api/sessions/${sessionId}/players/${playerId}/override`, {
+        adminToken,
+        boardIndex,
+        correct,
+      });
+    } catch (e) {
+      console.error("Failed to override answer", e);
+    }
+  }
+
+  async function handlePenalizePlayer(playerId: string) {
+    try {
+      await apiRequest("POST", `/api/sessions/${sessionId}/players/${playerId}/penalize`, {
+        adminToken,
+        points: 5,
+      });
+    } catch (e) {
+      console.error("Failed to penalize player", e);
+    }
+  }
+
   async function handleRandomizeTeams() {
     try {
       await apiRequest("POST", `/api/sessions/${sessionId}/teams`, {
@@ -365,11 +406,17 @@ export default function AdminPage() {
     );
   }
 
+  const activePlayers = session.players.filter((p: Player) => !p.banned);
   const currentBoard = session.boards[session.currentBoardIndex];
   const currentClue = currentBoard?.clues?.[session.currentClueIndex];
   const isLastClue = session.currentClueIndex >= 4;
   const isLastBoard = session.currentBoardIndex >= session.boards.length - 1;
   const currentCluePoints = CLUE_POINTS[session.currentClueIndex] || 2;
+
+  const getTeamAvg = (team: Team) => {
+    const memberCount = team.players.length;
+    return memberCount > 0 ? Math.round((team.score / memberCount) * 10) / 10 : 0;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 text-white">
@@ -408,55 +455,80 @@ export default function AdminPage() {
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-lg flex items-center gap-2 text-white">
                     <Users className="w-5 h-5 text-amber-400" />
-                    Spelare ({session.players.length})
+                    Spelare ({activePlayers.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {session.players.length === 0 ? (
+                  {activePlayers.length === 0 ? (
                     <p className="text-white/40 text-sm text-center py-6">
                       Väntar på att spelare ska ansluta...
                     </p>
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {session.players.map((p: Player) => (
-                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md bg-white/5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-sm font-bold">
-                            {p.name.charAt(0).toUpperCase()}
-                          </div>
-                          {editingPlayer === p.id ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <Input
-                                data-testid={`input-edit-name-${p.id}`}
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="h-8 text-sm bg-white/10 border-white/20 text-white"
-                                autoFocus
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleRenameSave(p.id);
-                                  if (e.key === "Escape") setEditingPlayer(null);
-                                }}
-                              />
-                              <Button size="sm" onClick={() => handleRenameSave(p.id)}>Spara</Button>
+                      {activePlayers.map((p: Player) => {
+                        const playerTeam = session.teams.find((t: Team) => t.id === p.teamId);
+                        return (
+                          <div key={p.id} className="flex items-center gap-3 p-2 rounded-md bg-white/5">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                              style={{
+                                backgroundColor: playerTeam ? playerTeam.color : undefined,
+                                background: playerTeam ? undefined : "linear-gradient(135deg, #f59e0b, #f97316)",
+                              }}
+                            >
+                              {p.name.charAt(0).toUpperCase()}
                             </div>
-                          ) : (
-                            <>
-                              <span className="font-medium flex-1 text-sm text-white">{p.name}</span>
-                              <Button
-                                data-testid={`button-edit-player-${p.id}`}
-                                size="icon"
-                                variant="ghost"
-                                className="text-white/40"
-                                onClick={() => {
-                                  setEditingPlayer(p.id);
-                                  setEditName(p.name);
-                                }}
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      ))}
+                            {editingPlayer === p.id ? (
+                              <div className="flex items-center gap-2 flex-1">
+                                <Input
+                                  data-testid={`input-edit-name-${p.id}`}
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className="h-8 text-sm bg-white/10 border-white/20 text-white"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleRenameSave(p.id);
+                                    if (e.key === "Escape") setEditingPlayer(null);
+                                  }}
+                                />
+                                <Button size="sm" onClick={() => handleRenameSave(p.id)}>Spara</Button>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="font-medium flex-1 text-sm text-white">
+                                  {p.name}
+                                  {playerTeam && (
+                                    <span className="ml-2 text-xs" style={{ color: playerTeam.color }}>
+                                      {playerTeam.name}
+                                    </span>
+                                  )}
+                                </span>
+                                <Button
+                                  data-testid={`button-edit-player-${p.id}`}
+                                  size="icon"
+                                  variant="ghost"
+                                  className="text-white/40"
+                                  onClick={() => {
+                                    setEditingPlayer(p.id);
+                                    setEditName(p.name);
+                                  }}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  data-testid={`button-remove-player-${p.id}`}
+                                  size="icon"
+                                  variant="ghost"
+                                  className="text-white/40"
+                                  onClick={() => handleRemovePlayer(p.id)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -488,7 +560,7 @@ export default function AdminPage() {
                     <Button
                       data-testid="button-randomize-teams"
                       onClick={handleRandomizeTeams}
-                      disabled={session.players.length < 1}
+                      disabled={activePlayers.length < 1}
                       className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0"
                     >
                       <Shuffle className="w-4 h-4" />
@@ -641,7 +713,7 @@ export default function AdminPage() {
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {session.teams.map((team: Team) => {
-                      const members = session.players.filter((p: Player) => p.teamId === team.id);
+                      const members = activePlayers.filter((p: Player) => p.teamId === team.id);
                       return (
                         <div
                           key={team.id}
@@ -678,45 +750,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {session.gameState === "teams" && (
-          <div className="flex flex-col gap-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-white mb-2">Lag har skapats!</h2>
-              <p className="text-white/50">Eleverna kan nu se sina lag</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {session.teams.map((team: Team) => {
-                const members = session.players.filter((p: Player) => p.teamId === team.id);
-                return (
-                  <Card key={team.id} className="bg-white/5 border-white/10">
-                    <CardContent className="pt-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-6 h-6 rounded-full" style={{ backgroundColor: team.color }} />
-                        <span className="font-bold text-lg" style={{ color: team.color }}>{team.name}</span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {members.map((p: Player) => (
-                          <span key={p.id} className="text-sm text-white/60">{p.name}</span>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-            <Button
-              data-testid="button-start-game"
-              size="lg"
-              className="gap-2 self-center bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-lg px-8"
-              disabled={session.boards.length === 0}
-              onClick={handleStartGame}
-            >
-              <Play className="w-5 h-5" />
-              Starta spelet
-            </Button>
-          </div>
-        )}
-
         {session.gameState === "playing" && currentBoard && (
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -733,9 +766,6 @@ export default function AdminPage() {
                   </Badge>
                 </div>
               </div>
-              <Badge className="bg-white/10 text-white/60 text-xs border-white/20">
-                Facit: {currentBoard.answer}
-              </Badge>
             </div>
 
             <Card className="bg-white/5 border-white/10">
@@ -763,64 +793,76 @@ export default function AdminPage() {
                 className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0"
               >
                 <Eye className="w-4 h-4" />
-                Visa facit & poängräkning
+                Visa facit
               </Button>
             </div>
 
-            <Card className="bg-white/5 border-white/10">
-              <CardHeader>
-                <CardTitle className="text-lg text-white">Lagstatus</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {session.teams.map((team: Team) => {
-                    const teamPlayers = session.players.filter((p: Player) => p.teamId === team.id);
-                    const lockedCount = teamPlayers.filter((p) =>
-                      p.answers.find((a) => a.boardIndex === session.currentBoardIndex && a.locked)
-                    ).length;
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {session.teams.map((team: Team) => {
+                const teamPlayers = activePlayers.filter((p: Player) => p.teamId === team.id);
+                const lockedCount = teamPlayers.filter((p) =>
+                  p.answers.find((a) => a.boardIndex === session.currentBoardIndex && a.locked)
+                ).length;
 
-                    return (
+                return (
+                  <Tooltip key={team.id}>
+                    <TooltipTrigger asChild>
                       <div
-                        key={team.id}
-                        className="p-4 rounded-md"
+                        data-testid={`team-card-${team.id}`}
+                        className="p-4 rounded-md cursor-default"
                         style={{ backgroundColor: team.color + "15", border: `1px solid ${team.color}33` }}
                       >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: team.color }} />
-                            <span className="font-bold text-sm" style={{ color: team.color }}>{team.name}</span>
-                          </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: team.color }} />
+                          <span className="font-bold text-sm" style={{ color: team.color }}>{team.name}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
                           <span className="text-sm font-bold text-white">{team.score}p</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          {teamPlayers.map((p) => {
-                            const pAnswer = p.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-                            return (
-                              <div key={p.id} className="flex items-center justify-between text-sm">
-                                <span className="text-white/60">{p.name}</span>
-                                {pAnswer?.locked ? (
-                                  <div className="flex items-center gap-1">
-                                    <Lock className="w-3 h-3 text-emerald-400" />
-                                    <span className="text-emerald-400 text-xs">Låst</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-white/30 text-xs">Väntar...</span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${team.color}22` }}>
-                          <p className="text-xs text-white/40">
-                            {lockedCount}/{teamPlayers.length} har svarat
-                          </p>
+                          <div className="flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-white/40" />
+                            <span className="text-xs text-white/40">{lockedCount}/{teamPlayers.length}</span>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <div className="flex flex-col gap-1 py-1">
+                        <p className="font-bold text-sm mb-1" style={{ color: team.color }}>{team.name}</p>
+                        {teamPlayers.map((p) => {
+                          const pAnswer = p.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+                          return (
+                            <div key={p.id} className="flex items-center justify-between gap-4 text-sm">
+                              <span>{p.name}</span>
+                              <div className="flex items-center gap-2">
+                                {pAnswer?.locked ? (
+                                  <span className="text-emerald-500 flex items-center gap-1">
+                                    <Lock className="w-3 h-3" />
+                                    Låst
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">Väntar...</span>
+                                )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemovePlayer(p.id);
+                                  }}
+                                >
+                                  <UserX className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
 
             <Card className="bg-white/5 border-white/10">
               <CardHeader>
@@ -860,7 +902,7 @@ export default function AdminPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {session.teams.map((team: Team) => {
-                const teamPlayers = session.players.filter((p: Player) => p.teamId === team.id);
+                const teamPlayers = activePlayers.filter((p: Player) => p.teamId === team.id);
                 return (
                   <Card key={team.id} className="bg-white/5 border-white/10">
                     <CardContent className="pt-4">
@@ -870,7 +912,7 @@ export default function AdminPage() {
                         <span className="ml-auto font-bold text-white">{team.score}p</span>
                       </div>
                       <div className="flex flex-col gap-2">
-                        {teamPlayers.map((p) => {
+                        {teamPlayers.map((p, playerIdx) => {
                           const pAnswer = p.answers.find((a: PlayerAnswer) => a.boardIndex === session.currentBoardIndex);
                           return (
                             <div key={p.id} className="flex items-center gap-2 text-sm">
@@ -881,13 +923,78 @@ export default function AdminPage() {
                               ) : (
                                 <XCircle className="w-4 h-4 text-white/20 shrink-0" />
                               )}
-                              <span className="text-white/70 flex-1">{p.name}</span>
+                              <span className="text-white/70 flex-1">Spelare {playerIdx + 1}</span>
+
                               {pAnswer?.locked && (
-                                <span className="text-white/40 text-xs truncate max-w-[100px]">"{pAnswer.answer}"</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-white/40 text-xs truncate max-w-[80px] cursor-default underline decoration-dotted">
+                                      "{pAnswer.answer.length > 10 ? pAnswer.answer.slice(0, 10) + "..." : pAnswer.answer}"
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="max-w-xs break-words">{pAnswer.answer}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">{p.name}</p>
+                                  </TooltipContent>
+                                </Tooltip>
                               )}
+
                               {pAnswer?.pointsAwarded ? (
                                 <span className="text-emerald-400 font-bold text-xs">+{pAnswer.pointsAwarded}p</span>
                               ) : null}
+
+                              {pAnswer?.locked && (
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        data-testid={`button-toggle-correct-${p.id}`}
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => handleOverrideAnswer(p.id, session.currentBoardIndex, !pAnswer.correct)}
+                                      >
+                                        {pAnswer.correct ? (
+                                          <XCircle className="w-3.5 h-3.5 text-red-400" />
+                                        ) : (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {pAnswer.correct ? "Markera som fel" : "Markera som rätt"}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        data-testid={`button-penalize-${p.id}`}
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => handlePenalizePlayer(p.id)}
+                                      >
+                                        <MinusCircle className="w-3.5 h-3.5 text-orange-400" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Minuspoäng (-5p)</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        data-testid={`button-ban-${p.id}`}
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => handleBanPlayer(p.id)}
+                                      >
+                                        <Ban className="w-3.5 h-3.5 text-red-400" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Stäng av spelare</TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -931,13 +1038,14 @@ export default function AdminPage() {
               <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 mb-2">
                 Spelet är slut!
               </h2>
+              <p className="text-white/50 text-sm">Poäng = lagsnitt per spelare</p>
             </div>
 
             <div className="max-w-lg mx-auto w-full flex flex-col gap-3">
               {[...session.teams]
-                .sort((a, b) => b.score - a.score)
+                .sort((a, b) => getTeamAvg(b) - getTeamAvg(a))
                 .map((team: Team, i: number) => {
-                  const members = session.players.filter((p: Player) => p.teamId === team.id);
+                  const members = activePlayers.filter((p: Player) => p.teamId === team.id);
                   return (
                     <div
                       key={team.id}
@@ -956,10 +1064,13 @@ export default function AdminPage() {
                       <div className="flex-1">
                         <span className="font-bold" style={{ color: team.color }}>{team.name}</span>
                         <div className="text-xs text-white/40">
-                          {members.map((p: Player) => `${p.name} (${p.score}p)`).join(", ")}
+                          {members.map((p: Player) => p.name).join(", ")}
                         </div>
                       </div>
-                      <span className="text-xl font-bold text-white">{team.score}p</span>
+                      <div className="text-right">
+                        <span className="text-xl font-bold text-white">{getTeamAvg(team)}p</span>
+                        <p className="text-xs text-white/30">snitt</p>
+                      </div>
                     </div>
                   );
                 })}

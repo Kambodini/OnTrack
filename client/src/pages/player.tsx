@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Users, Trophy, Clock, CheckCircle2, XCircle, Zap, Target, Info } from "lucide-react";
+import { Lock, Users, Trophy, Clock, CheckCircle2, XCircle, Zap, Target, Info, Ban } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { CLUE_POINTS } from "@shared/schema";
 import type { Team, Player, PlayerAnswer } from "@shared/schema";
@@ -92,6 +92,22 @@ export default function PlayerPage() {
     );
   }
 
+  if (myPlayer?.banned) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
+        <Card className="w-full max-w-md text-center bg-white/5 border-red-500/30">
+          <CardContent className="pt-6 space-y-4">
+            <div className="w-20 h-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
+              <Ban className="w-10 h-10 text-red-400" />
+            </div>
+            <p className="text-2xl font-bold text-red-400">Avstängd</p>
+            <p className="text-white/50 text-sm">Du har blivit avstängd från spelet av läraren.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (session.gameState === "lobby") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
@@ -102,63 +118,60 @@ export default function PlayerPage() {
             </h1>
             <p className="text-white/60">Väntar på att spelet ska börja...</p>
           </div>
-          <Card className="bg-white/5 border-white/10 text-white">
-            <CardContent className="pt-6 space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <Clock className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <p className="text-white/80">
-                  Du är med som <span className="font-bold text-amber-400">{myPlayer?.name}</span>
-                </p>
-                <p className="text-white/40 text-sm mt-1">{session.players.length} spelare anslutna</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
-  if (session.gameState === "teams" && myTeam) {
-    const teamMembers = session.players.filter((p: Player) => p.teamId === myTeam.id);
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
-        <div className="w-full max-w-md space-y-6">
-          <Card className="bg-white/5 border-white/10">
-            <CardHeader className="text-center pb-2">
-              <div
-                className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-3"
-                style={{ backgroundColor: myTeam.color + "33" }}
-              >
-                <Users className="w-10 h-10" style={{ color: myTeam.color }} />
-              </div>
-              <CardTitle className="text-2xl" style={{ color: myTeam.color }}>{myTeam.name}</CardTitle>
-              <p className="text-white/50 text-sm mt-1">Ditt lag</p>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col gap-2">
-                {teamMembers.map((p: Player) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center gap-3 p-3 rounded-md"
-                    style={{ backgroundColor: myTeam.color + "15" }}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                      style={{ backgroundColor: myTeam.color }}
-                    >
-                      {p.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="font-medium text-white">{p.name}</span>
-                    {p.id === playerId && (
-                      <Badge className="ml-auto bg-white/10 text-white/70">Du</Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {myTeam ? (
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="text-center pb-2">
+                <div
+                  className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-3"
+                  style={{ backgroundColor: myTeam.color + "33" }}
+                >
+                  <Users className="w-10 h-10" style={{ color: myTeam.color }} />
+                </div>
+                <CardTitle className="text-2xl" style={{ color: myTeam.color }}>{myTeam.name}</CardTitle>
+                <p className="text-white/50 text-sm mt-1">Ditt lag</p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-2">
+                  {session.players
+                    .filter((p: Player) => p.teamId === myTeam.id && !p.banned)
+                    .map((p: Player) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-3 p-3 rounded-md"
+                        style={{ backgroundColor: myTeam.color + "15" }}
+                      >
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                          style={{ backgroundColor: myTeam.color }}
+                        >
+                          {p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-white">{p.name}</span>
+                        {p.id === playerId && (
+                          <Badge className="ml-auto bg-white/10 text-white/70">Du</Badge>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="bg-white/5 border-white/10 text-white">
+              <CardContent className="pt-6 space-y-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <Clock className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <p className="text-white/80">
+                    Du är med som <span className="font-bold text-amber-400">{myPlayer?.name}</span>
+                  </p>
+                  <p className="text-white/40 text-sm mt-1">{session.players.length} spelare anslutna</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <RulesCard />
         </div>
       </div>
@@ -320,7 +333,11 @@ export default function PlayerPage() {
   }
 
   if (session.gameState === "finished") {
-    const sortedTeams = [...session.teams].sort((a, b) => b.score - a.score);
+    const getTeamAvg = (team: Team) => {
+      const memberCount = team.players.length;
+      return memberCount > 0 ? Math.round((team.score / memberCount) * 10) / 10 : 0;
+    };
+    const sortedTeams = [...session.teams].sort((a, b) => getTeamAvg(b) - getTeamAvg(a));
     const myRank = sortedTeams.findIndex((t) => t.id === myTeam?.id) + 1;
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
@@ -334,7 +351,7 @@ export default function PlayerPage() {
             </h2>
             {myTeam && (
               <p className="text-white/60">
-                Ditt lag kom <span className="font-bold text-amber-400">#{myRank}</span> med <span className="font-bold text-white">{myTeam.score}p</span>
+                Ditt lag kom <span className="font-bold text-amber-400">#{myRank}</span> med snitt <span className="font-bold text-white">{getTeamAvg(myTeam)}p</span>
               </p>
             )}
           </div>
@@ -356,7 +373,7 @@ export default function PlayerPage() {
                     <span className="text-lg font-bold w-6 text-center text-white/40">{i + 1}</span>
                     <div className="w-8 h-8 rounded-full" style={{ backgroundColor: team.color }} />
                     <span className="font-semibold flex-1 text-white" style={{ color: team.color }}>{team.name}</span>
-                    <span className="font-bold text-white">{team.score}p</span>
+                    <span className="font-bold text-white">{getTeamAvg(team)}p snitt</span>
                   </div>
                 ))}
               </div>
