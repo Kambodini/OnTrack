@@ -252,7 +252,7 @@ export class MemStorage implements IStorage {
     const existingAnswer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
     if (existingAnswer && existingAnswer.locked) {
       existingAnswer.locked = false;
-      existingAnswer._wasUnlocked = true;
+      (existingAnswer as any)._wasUnlocked = true;
     }
   }
 
