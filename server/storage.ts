@@ -1,4 +1,5 @@
-import type { GameSession, Player, Team, GameBoard, TeamAnswer } from "@shared/schema";
+import type { GameSession, Player, Team, GameBoard, PlayerAnswer } from "@shared/schema";
+import { CLUE_POINTS } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 function generateSessionId(): string {
@@ -47,9 +48,7 @@ export interface IStorage {
   setBoards(sessionId: string, boards: GameBoard[]): Promise<void>;
   startGame(sessionId: string): Promise<void>;
   nextClue(sessionId: string): Promise<number>;
-  lockAnswer(sessionId: string, teamId: string, answer: string): Promise<void>;
-  passTeam(sessionId: string, teamId: string): Promise<void>;
-  unlockAnswer(sessionId: string, teamId: string): Promise<void>;
+  lockPlayerAnswer(sessionId: string, playerId: string, answer: string): Promise<void>;
   revealAnswer(sessionId: string): Promise<void>;
   nextQuestion(sessionId: string): Promise<void>;
   finishGame(sessionId: string): Promise<void>;
@@ -101,6 +100,8 @@ export class MemStorage implements IStorage {
       name,
       sessionId,
       teamId: null,
+      answers: [],
+      score: 0,
     };
     session.players.push(player);
     return player;
@@ -145,7 +146,6 @@ export class MemStorage implements IStorage {
         color: colors[i],
         players: teamPlayers.map((p) => p.id),
         score: 0,
-        answers: [],
       };
       teams.push(team);
       teamPlayers.forEach((p) => {
@@ -181,78 +181,30 @@ export class MemStorage implements IStorage {
     if (!session) throw new Error("Session not found");
     if (session.currentClueIndex < 4) {
       session.currentClueIndex++;
-      for (const team of session.teams) {
-        const answer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-        if (answer?.passed) {
-          answer.passed = false;
-        }
-      }
     }
     return session.currentClueIndex;
   }
 
-  async lockAnswer(sessionId: string, teamId: string, answer: string): Promise<void> {
+  async lockPlayerAnswer(sessionId: string, playerId: string, answer: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error("Session not found");
-    const team = session.teams.find((t) => t.id === teamId);
-    if (!team) throw new Error("Team not found");
+    const player = session.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("Player not found");
 
-    let existingAnswer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-    if (existingAnswer) {
-      if ((existingAnswer as any)._wasUnlocked) {
-        existingAnswer.unlockedAndRelocked = true;
-        delete (existingAnswer as any)._wasUnlocked;
-      }
-      existingAnswer.answer = answer;
-      existingAnswer.locked = true;
-      existingAnswer.passed = false;
-      existingAnswer.lockedAtClue = session.currentClueIndex;
+    let existing = player.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+    if (existing) {
+      existing.answer = answer;
+      existing.locked = true;
+      existing.lockedAtClue = session.currentClueIndex;
     } else {
-      team.answers.push({
+      player.answers.push({
         boardIndex: session.currentBoardIndex,
         answer,
         locked: true,
-        passed: false,
         lockedAtClue: session.currentClueIndex,
-        unlockedAndRelocked: false,
         correct: null,
+        pointsAwarded: 0,
       });
-    }
-  }
-
-  async passTeam(sessionId: string, teamId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) throw new Error("Session not found");
-    const team = session.teams.find((t) => t.id === teamId);
-    if (!team) throw new Error("Team not found");
-
-    let existingAnswer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-    if (existingAnswer) {
-      existingAnswer.passed = true;
-      existingAnswer.locked = false;
-    } else {
-      team.answers.push({
-        boardIndex: session.currentBoardIndex,
-        answer: "",
-        locked: false,
-        passed: true,
-        lockedAtClue: session.currentClueIndex,
-        unlockedAndRelocked: false,
-        correct: null,
-      });
-    }
-  }
-
-  async unlockAnswer(sessionId: string, teamId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) throw new Error("Session not found");
-    const team = session.teams.find((t) => t.id === teamId);
-    if (!team) throw new Error("Team not found");
-
-    const existingAnswer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-    if (existingAnswer && existingAnswer.locked) {
-      existingAnswer.locked = false;
-      (existingAnswer as any)._wasUnlocked = true;
     }
   }
 
@@ -266,22 +218,29 @@ export class MemStorage implements IStorage {
     const correctAnswer = currentBoard.answer.toLowerCase().trim();
 
     for (const team of session.teams) {
-      const teamAnswer = team.answers.find((a) => a.boardIndex === session.currentBoardIndex);
-      if (teamAnswer && teamAnswer.locked) {
-        const isCorrect = teamAnswer.answer.toLowerCase().trim() === correctAnswer;
-        teamAnswer.correct = isCorrect;
-        if (isCorrect) {
-          const basePoints = 10;
-          const clueBonus = (4 - teamAnswer.lockedAtClue) * 0;
-          let points = basePoints;
-          if (teamAnswer.unlockedAndRelocked) {
-            points = Math.floor(points / 2);
+      let teamRoundPoints = 0;
+      const teamPlayers = session.players.filter((p) => p.teamId === team.id);
+
+      for (const player of teamPlayers) {
+        const pAnswer = player.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+        if (pAnswer && pAnswer.locked) {
+          const isCorrect = pAnswer.answer.toLowerCase().trim() === correctAnswer;
+          pAnswer.correct = isCorrect;
+          if (isCorrect) {
+            const points = CLUE_POINTS[pAnswer.lockedAtClue] || 2;
+            pAnswer.pointsAwarded = points;
+            player.score += points;
+            teamRoundPoints += points;
+          } else {
+            pAnswer.pointsAwarded = 0;
           }
-          team.score += points;
+        } else if (pAnswer) {
+          pAnswer.correct = false;
+          pAnswer.pointsAwarded = 0;
         }
-      } else if (teamAnswer) {
-        teamAnswer.correct = false;
       }
+
+      team.score += teamRoundPoints;
     }
 
     session.gameState = "revealing";
@@ -308,11 +267,11 @@ export class MemStorage implements IStorage {
     session.currentBoardIndex = 0;
     session.currentClueIndex = 0;
     session.gameState = "lobby";
-    session.players.forEach((p) => (p.teamId = null));
-    for (const team of session.teams) {
-      team.answers = [];
-      team.score = 0;
-    }
+    session.players.forEach((p) => {
+      p.teamId = null;
+      p.answers = [];
+      p.score = 0;
+    });
   }
 }
 

@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { getPlayerId, setPlayerId } from "@/lib/gameStorage";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowRight } from "lucide-react";
+import { ArrowRight, Zap } from "lucide-react";
 import { useEffect } from "react";
 
 export default function JoinPage() {
@@ -47,48 +47,53 @@ export default function JoinPage() {
 
   if (checking) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950">
+        <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-            <Users className="w-7 h-7 text-primary" />
-          </div>
-          <CardTitle className="text-2xl font-bold">Gå med i spelet</CardTitle>
-          <p className="text-muted-foreground text-sm mt-1">
-            Skriv ditt namn för att gå med
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleJoin} className="flex flex-col gap-4">
-            <Input
-              data-testid="input-player-name"
-              placeholder="Ditt namn..."
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={30}
-              autoFocus
-              className="text-center text-lg"
-            />
-            {error && <p className="text-destructive text-sm text-center">{error}</p>}
-            <Button
-              data-testid="button-join"
-              type="submit"
-              disabled={loading || !name.trim()}
-              className="gap-2"
-            >
-              {loading ? "Ansluter..." : "Gå med"}
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-4">
+      <div className="w-full max-w-md text-center space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">
+            På Spåret
+          </h1>
+          <p className="text-white/50 text-sm">Gissa svaret från ledtrådarna!</p>
+        </div>
+
+        <Card className="bg-white/5 border-white/10">
+          <CardContent className="pt-6">
+            <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mb-4">
+              <Zap className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-1">Gå med i spelet</h2>
+            <p className="text-white/40 text-sm mb-4">Skriv ditt namn för att gå med</p>
+            <form onSubmit={handleJoin} className="flex flex-col gap-4">
+              <Input
+                data-testid="input-player-name"
+                placeholder="Ditt namn..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={30}
+                autoFocus
+                className="text-center text-lg bg-white/10 border-white/20 text-white placeholder:text-white/30"
+              />
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <Button
+                data-testid="button-join"
+                type="submit"
+                disabled={loading || !name.trim()}
+                className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0"
+              >
+                {loading ? "Ansluter..." : "Gå med"}
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

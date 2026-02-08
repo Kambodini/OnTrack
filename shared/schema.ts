@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const CLUE_POINTS = [10, 8, 6, 4, 2];
+
 export interface GameSession {
   id: string;
   adminToken: string;
@@ -17,6 +19,17 @@ export interface Player {
   name: string;
   sessionId: string;
   teamId: string | null;
+  answers: PlayerAnswer[];
+  score: number;
+}
+
+export interface PlayerAnswer {
+  boardIndex: number;
+  answer: string;
+  locked: boolean;
+  lockedAtClue: number;
+  correct: boolean | null;
+  pointsAwarded: number;
 }
 
 export interface Team {
@@ -25,17 +38,6 @@ export interface Team {
   color: string;
   players: string[];
   score: number;
-  answers: TeamAnswer[];
-}
-
-export interface TeamAnswer {
-  boardIndex: number;
-  answer: string;
-  locked: boolean;
-  passed: boolean;
-  lockedAtClue: number;
-  unlockedAndRelocked: boolean;
-  correct: boolean | null;
 }
 
 export interface GameBoard {
@@ -70,6 +72,4 @@ export type WSMessage =
   | { type: "session_update"; session: Omit<GameSession, "adminToken"> }
   | { type: "error"; message: string }
   | { type: "player_joined"; player: Player }
-  | { type: "team_answer_update"; teamId: string; answer: TeamAnswer }
-  | { type: "clue_revealed"; clueIndex: number }
-  | { type: "round_result"; boardIndex: number; answer: string; results: { teamId: string; correct: boolean; points: number }[] };
+  | { type: "clue_revealed"; clueIndex: number };

@@ -10,13 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from "@/components/ui/textarea";
 import {
   Users, Shuffle, Play, ChevronRight, Copy, Check,
-  Lock, SkipForward, Trophy, Upload, Download, Pencil,
+  Lock, Trophy, Upload, Pencil,
   Eye, ArrowRight, CheckCircle2, XCircle, RotateCcw,
   Plus, Trash2, FolderOpen, ClipboardCopy, ClipboardPaste, Save
 } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Player, Team, GameBoard, GameBoardExport } from "@shared/schema";
+import { CLUE_POINTS } from "@shared/schema";
+import type { Player, Team, GameBoard, GameBoardExport, PlayerAnswer } from "@shared/schema";
 
 function emptyClues(): string[] {
   return ["", "", "", "", ""];
@@ -66,7 +67,13 @@ function BoardEditor({
     (b) => b.answer.trim() && b.clues.every((c) => c.trim())
   );
 
-  const clueLabels = ["Ledtråd 1 (svårast)", "Ledtråd 2", "Ledtråd 3", "Ledtråd 4", "Ledtråd 5 (lättast)"];
+  const clueLabels = [
+    `Ledtråd 1 (svårast - ${CLUE_POINTS[0]}p)`,
+    `Ledtråd 2 (${CLUE_POINTS[1]}p)`,
+    `Ledtråd 3 (${CLUE_POINTS[2]}p)`,
+    `Ledtråd 4 (${CLUE_POINTS[3]}p)`,
+    `Ledtråd 5 (lättast - ${CLUE_POINTS[4]}p)`,
+  ];
 
   return (
     <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
@@ -349,10 +356,10 @@ export default function AdminPage() {
 
   if (!session) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-muted-foreground text-sm">Laddar spelsession...</p>
+          <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-white/60 text-sm">Laddar spelsession...</p>
         </div>
       </div>
     );
@@ -362,14 +369,15 @@ export default function AdminPage() {
   const currentClue = currentBoard?.clues?.[session.currentClueIndex];
   const isLastClue = session.currentClueIndex >= 4;
   const isLastBoard = session.currentBoardIndex >= session.boards.length - 1;
+  const currentCluePoints = CLUE_POINTS[session.currentClueIndex] || 2;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b p-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 text-white">
+      <header className="p-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold">På Spåret</h1>
-            <Badge variant="secondary">Admin</Badge>
+            <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">På Spåret</h1>
+            <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Admin</Badge>
             {!connected && <Badge variant="destructive">Frånkopplad</Badge>}
           </div>
           <div className="flex items-center gap-2">
@@ -377,13 +385,14 @@ export default function AdminPage() {
               data-testid="input-share-link"
               value={shareUrl}
               readOnly
-              className="w-64 text-sm"
+              className="w-64 text-sm bg-white/10 border-white/20 text-white"
             />
             <Button
               data-testid="button-copy-link"
               size="icon"
               variant="outline"
               onClick={copyLink}
+              className="border-white/20 text-white"
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </Button>
@@ -395,23 +404,23 @@ export default function AdminPage() {
         {session.gameState === "lobby" && (
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
+              <Card className="bg-white/5 border-white/10">
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Users className="w-5 h-5" />
+                  <CardTitle className="text-lg flex items-center gap-2 text-white">
+                    <Users className="w-5 h-5 text-amber-400" />
                     Spelare ({session.players.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {session.players.length === 0 ? (
-                    <p className="text-muted-foreground text-sm text-center py-6">
+                    <p className="text-white/40 text-sm text-center py-6">
                       Väntar på att spelare ska ansluta...
                     </p>
                   ) : (
                     <div className="flex flex-col gap-2">
                       {session.players.map((p: Player) => (
-                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md bg-white/5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-sm font-bold">
                             {p.name.charAt(0).toUpperCase()}
                           </div>
                           {editingPlayer === p.id ? (
@@ -420,27 +429,23 @@ export default function AdminPage() {
                                 data-testid={`input-edit-name-${p.id}`}
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="h-8 text-sm"
+                                className="h-8 text-sm bg-white/10 border-white/20 text-white"
                                 autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") handleRenameSave(p.id);
                                   if (e.key === "Escape") setEditingPlayer(null);
                                 }}
                               />
-                              <Button
-                                size="sm"
-                                onClick={() => handleRenameSave(p.id)}
-                              >
-                                Spara
-                              </Button>
+                              <Button size="sm" onClick={() => handleRenameSave(p.id)}>Spara</Button>
                             </div>
                           ) : (
                             <>
-                              <span className="font-medium flex-1 text-sm">{p.name}</span>
+                              <span className="font-medium flex-1 text-sm text-white">{p.name}</span>
                               <Button
                                 data-testid={`button-edit-player-${p.id}`}
                                 size="icon"
                                 variant="ghost"
+                                className="text-white/40"
                                 onClick={() => {
                                   setEditingPlayer(p.id);
                                   setEditName(p.name);
@@ -458,18 +463,18 @@ export default function AdminPage() {
               </Card>
 
               <div className="flex flex-col gap-6">
-                <Card>
+                <Card className="bg-white/5 border-white/10">
                   <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Shuffle className="w-5 h-5" />
+                    <CardTitle className="text-lg flex items-center gap-2 text-white">
+                      <Shuffle className="w-5 h-5 text-emerald-400" />
                       Skapa lag
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-4">
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-muted-foreground">Lagstorlek</span>
-                        <span className="font-bold text-lg">{teamSize}</span>
+                        <span className="text-sm text-white/50">Lagstorlek</span>
+                        <span className="font-bold text-lg text-amber-400">{teamSize}</span>
                       </div>
                       <Slider
                         data-testid="slider-team-size"
@@ -484,7 +489,7 @@ export default function AdminPage() {
                       data-testid="button-randomize-teams"
                       onClick={handleRandomizeTeams}
                       disabled={session.players.length < 1}
-                      className="gap-2"
+                      className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0"
                     >
                       <Shuffle className="w-4 h-4" />
                       Slumpa lag
@@ -492,49 +497,41 @@ export default function AdminPage() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="bg-white/5 border-white/10">
                   <CardHeader className="flex flex-row items-center justify-between gap-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <FolderOpen className="w-5 h-5" />
+                    <CardTitle className="text-lg flex items-center gap-2 text-white">
+                      <FolderOpen className="w-5 h-5 text-blue-400" />
                       Spelbräden
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
                     {session.boards.length > 0 && (
-                      <div className="p-3 rounded-md bg-primary/5 border border-primary/20">
-                        <p className="text-sm font-medium text-primary mb-1">
+                      <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                        <p className="text-sm font-medium text-emerald-400 mb-1">
                           Aktivt spelbräde: {session.boards.length} frågor
                         </p>
-                        <div className="flex flex-col gap-1">
-                          {session.boards.map((b: GameBoard, i: number) => (
-                            <div key={i} className="flex items-center gap-2 text-xs">
-                              <Badge variant="secondary">{i + 1}</Badge>
-                              <span className="truncate">{b.answer}</span>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
 
                     {savedBoardSets.length > 0 && (
                       <div className="flex flex-col gap-2">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Sparade spelbräden</p>
+                        <p className="text-xs text-white/40 uppercase tracking-wide">Sparade spelbräden</p>
                         {savedBoardSets.map((bs) => (
                           <div
                             key={bs.id}
                             data-testid={`board-set-${bs.id}`}
-                            className="flex items-center gap-2 p-2 rounded-md bg-muted/50"
+                            className="flex items-center gap-2 p-2 rounded-md bg-white/5"
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{bs.name}</p>
-                              <p className="text-xs text-muted-foreground">{bs.boards.length} frågor</p>
+                              <p className="text-sm font-medium text-white truncate">{bs.name}</p>
+                              <p className="text-xs text-white/40">{bs.boards.length} frågor</p>
                             </div>
                             <Button
                               data-testid={`button-select-board-${bs.id}`}
                               size="sm"
                               variant="outline"
                               onClick={() => handleSelectBoard(bs)}
-                              className="gap-1 shrink-0"
+                              className="gap-1 shrink-0 border-white/20 text-white"
                             >
                               <Play className="w-3 h-3" />
                               Välj
@@ -543,6 +540,7 @@ export default function AdminPage() {
                               data-testid={`button-export-board-${bs.id}`}
                               size="icon"
                               variant="ghost"
+                              className="text-white/40"
                               onClick={() => handleExportBoardSet(bs)}
                             >
                               <ClipboardCopy className="w-3.5 h-3.5" />
@@ -551,6 +549,7 @@ export default function AdminPage() {
                               data-testid={`button-edit-board-${bs.id}`}
                               size="icon"
                               variant="ghost"
+                              className="text-white/40"
                               onClick={() => handleEditBoard(bs)}
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -559,6 +558,7 @@ export default function AdminPage() {
                               data-testid={`button-delete-board-${bs.id}`}
                               size="icon"
                               variant="ghost"
+                              className="text-white/40"
                               onClick={() => handleDeleteBoard(bs.id)}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -569,7 +569,7 @@ export default function AdminPage() {
                     )}
 
                     {savedBoardSets.length === 0 && session.boards.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-2">
+                      <p className="text-sm text-white/40 text-center py-2">
                         Inga spelbräden sparade. Skapa ett nytt eller klistra in JSON.
                       </p>
                     )}
@@ -578,7 +578,7 @@ export default function AdminPage() {
                       <Button
                         data-testid="button-create-board"
                         variant="outline"
-                        className="flex-1 gap-2"
+                        className="flex-1 gap-2 border-white/20 text-white"
                         onClick={handleCreateNewBoard}
                       >
                         <Plus className="w-4 h-4" />
@@ -586,7 +586,7 @@ export default function AdminPage() {
                       </Button>
                       <Dialog open={importJsonOpen} onOpenChange={setImportJsonOpen}>
                         <DialogTrigger asChild>
-                          <Button data-testid="button-import-board" variant="outline" className="flex-1 gap-2">
+                          <Button data-testid="button-import-board" variant="outline" className="flex-1 gap-2 border-white/20 text-white">
                             <ClipboardPaste className="w-4 h-4" />
                             Klistra in JSON
                           </Button>
@@ -634,9 +634,9 @@ export default function AdminPage() {
             </div>
 
             {session.teams.length > 0 && (
-              <Card>
+              <Card className="bg-white/5 border-white/10">
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-lg">Lag</CardTitle>
+                  <CardTitle className="text-lg text-white">Lag</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -645,21 +645,16 @@ export default function AdminPage() {
                       return (
                         <div
                           key={team.id}
-                          className="p-4 rounded-md border"
-                          style={{ borderColor: team.color + "44" }}
+                          className="p-4 rounded-md"
+                          style={{ backgroundColor: team.color + "15", border: `1px solid ${team.color}33` }}
                         >
                           <div className="flex items-center gap-2 mb-3">
-                            <div
-                              className="w-5 h-5 rounded-full"
-                              style={{ backgroundColor: team.color }}
-                            />
+                            <div className="w-5 h-5 rounded-full" style={{ backgroundColor: team.color }} />
                             <span className="font-bold" style={{ color: team.color }}>{team.name}</span>
                           </div>
                           <div className="flex flex-col gap-1">
                             {members.map((p: Player) => (
-                              <span key={p.id} className="text-sm text-muted-foreground">
-                                {p.name}
-                              </span>
+                              <span key={p.id} className="text-sm text-white/60">{p.name}</span>
                             ))}
                           </div>
                         </div>
@@ -673,7 +668,7 @@ export default function AdminPage() {
             <Button
               data-testid="button-start-game"
               size="lg"
-              className="gap-2 self-center"
+              className="gap-2 self-center bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-lg px-8"
               disabled={session.teams.length === 0 || session.boards.length === 0}
               onClick={handleStartGame}
             >
@@ -686,25 +681,22 @@ export default function AdminPage() {
         {session.gameState === "teams" && (
           <div className="flex flex-col gap-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Lag har skapats!</h2>
-              <p className="text-muted-foreground">Eleverna kan nu se sina lag</p>
+              <h2 className="text-2xl font-bold text-white mb-2">Lag har skapats!</h2>
+              <p className="text-white/50">Eleverna kan nu se sina lag</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {session.teams.map((team: Team) => {
                 const members = session.players.filter((p: Player) => p.teamId === team.id);
                 return (
-                  <Card key={team.id}>
+                  <Card key={team.id} className="bg-white/5 border-white/10">
                     <CardContent className="pt-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <div
-                          className="w-6 h-6 rounded-full"
-                          style={{ backgroundColor: team.color }}
-                        />
+                        <div className="w-6 h-6 rounded-full" style={{ backgroundColor: team.color }} />
                         <span className="font-bold text-lg" style={{ color: team.color }}>{team.name}</span>
                       </div>
                       <div className="flex flex-col gap-1">
                         {members.map((p: Player) => (
-                          <span key={p.id} className="text-sm">{p.name}</span>
+                          <span key={p.id} className="text-sm text-white/60">{p.name}</span>
                         ))}
                       </div>
                     </CardContent>
@@ -715,7 +707,7 @@ export default function AdminPage() {
             <Button
               data-testid="button-start-game"
               size="lg"
-              className="gap-2 self-center"
+              className="gap-2 self-center bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-lg px-8"
               disabled={session.boards.length === 0}
               onClick={handleStartGame}
             >
@@ -729,24 +721,27 @@ export default function AdminPage() {
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-white/50">
                   Fråga {session.currentBoardIndex + 1} av {session.boards.length}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Ledtråd {session.currentClueIndex + 1} av 5
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-white/40">
+                    Ledtråd {session.currentClueIndex + 1} av 5
+                  </p>
+                  <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs border-0">
+                    {currentCluePoints}p
+                  </Badge>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">
-                  Svar: {currentBoard.answer}
-                </Badge>
-              </div>
+              <Badge className="bg-white/10 text-white/60 text-xs border-white/20">
+                Facit: {currentBoard.answer}
+              </Badge>
             </div>
 
-            <Card>
+            <Card className="bg-white/5 border-white/10">
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground mb-2 uppercase tracking-wide">Nuvarande ledtråd</p>
-                <p className="text-xl font-medium leading-relaxed">{currentClue}</p>
+                <p className="text-xs text-white/40 mb-2 uppercase tracking-widest">Nuvarande ledtråd</p>
+                <p className="text-2xl font-medium leading-relaxed text-white">{currentClue}</p>
               </CardContent>
             </Card>
 
@@ -756,7 +751,7 @@ export default function AdminPage() {
                   data-testid="button-next-clue"
                   variant="outline"
                   onClick={handleNextClue}
-                  className="gap-2"
+                  className="gap-2 border-white/20 text-white"
                 >
                   <ChevronRight className="w-4 h-4" />
                   Nästa ledtråd
@@ -765,60 +760,60 @@ export default function AdminPage() {
               <Button
                 data-testid="button-reveal-answer"
                 onClick={handleRevealAnswer}
-                className="gap-2"
+                className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0"
               >
                 <Eye className="w-4 h-4" />
                 Visa facit & poängräkning
               </Button>
             </div>
 
-            <Card>
+            <Card className="bg-white/5 border-white/10">
               <CardHeader>
-                <CardTitle className="text-lg">Lagstatus</CardTitle>
+                <CardTitle className="text-lg text-white">Lagstatus</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {session.teams.map((team: Team) => {
-                    const teamAnswer = team.answers.find(
-                      (a) => a.boardIndex === session.currentBoardIndex
-                    );
+                    const teamPlayers = session.players.filter((p: Player) => p.teamId === team.id);
+                    const lockedCount = teamPlayers.filter((p) =>
+                      p.answers.find((a) => a.boardIndex === session.currentBoardIndex && a.locked)
+                    ).length;
+
                     return (
                       <div
                         key={team.id}
-                        className="p-4 rounded-md border"
-                        style={{ borderColor: team.color + "44" }}
+                        className="p-4 rounded-md"
+                        style={{ backgroundColor: team.color + "15", border: `1px solid ${team.color}33` }}
                       >
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <div
-                              className="w-4 h-4 rounded-full"
-                              style={{ backgroundColor: team.color }}
-                            />
-                            <span className="font-bold text-sm" style={{ color: team.color }}>
-                              {team.name}
-                            </span>
+                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: team.color }} />
+                            <span className="font-bold text-sm" style={{ color: team.color }}>{team.name}</span>
                           </div>
-                          <span className="text-sm font-bold">{team.score}p</span>
+                          <span className="text-sm font-bold text-white">{team.score}p</span>
                         </div>
-                        <div className="mt-2">
-                          {teamAnswer?.locked ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Lock className="w-3.5 h-3.5 text-primary" />
-                              <span className="text-primary font-medium">Låst</span>
-                              {teamAnswer.unlockedAndRelocked && (
-                                <Badge variant="secondary" className="text-xs">Bytt</Badge>
-                              )}
-                            </div>
-                          ) : teamAnswer?.passed ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />
-                              <span className="text-muted-foreground">Passat</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="text-muted-foreground">Väntar...</span>
-                            </div>
-                          )}
+                        <div className="flex flex-col gap-1">
+                          {teamPlayers.map((p) => {
+                            const pAnswer = p.answers.find((a) => a.boardIndex === session.currentBoardIndex);
+                            return (
+                              <div key={p.id} className="flex items-center justify-between text-sm">
+                                <span className="text-white/60">{p.name}</span>
+                                {pAnswer?.locked ? (
+                                  <div className="flex items-center gap-1">
+                                    <Lock className="w-3 h-3 text-emerald-400" />
+                                    <span className="text-emerald-400 text-xs">Låst</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-white/30 text-xs">Väntar...</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${team.color}22` }}>
+                          <p className="text-xs text-white/40">
+                            {lockedCount}/{teamPlayers.length} har svarat
+                          </p>
                         </div>
                       </div>
                     );
@@ -827,9 +822,9 @@ export default function AdminPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-white/5 border-white/10">
               <CardHeader>
-                <CardTitle className="text-sm text-muted-foreground">Alla ledtrådar</CardTitle>
+                <CardTitle className="text-sm text-white/40">Alla ledtrådar</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col gap-2">
@@ -838,13 +833,13 @@ export default function AdminPage() {
                       key={i}
                       className={`p-3 rounded-md text-sm ${
                         i <= session.currentClueIndex
-                          ? "bg-muted/50"
+                          ? "bg-white/5"
                           : "opacity-30"
-                      } ${i === session.currentClueIndex ? "ring-1 ring-primary/30" : ""}`}
+                      } ${i === session.currentClueIndex ? "ring-1 ring-amber-500/30" : ""}`}
                     >
                       <div className="flex items-start gap-2">
-                        <Badge variant="secondary" className="shrink-0">{i + 1}</Badge>
-                        <span>{i <= session.currentClueIndex ? clue : "????"}</span>
+                        <Badge className="shrink-0 bg-white/10 text-white/60 border-0">{CLUE_POINTS[i]}p</Badge>
+                        <span className="text-white/80">{i <= session.currentClueIndex ? clue : "????"}</span>
                       </div>
                     </div>
                   ))}
@@ -857,51 +852,46 @@ export default function AdminPage() {
         {session.gameState === "revealing" && currentBoard && (
           <div className="flex flex-col gap-6">
             <div className="text-center">
-              <h2 className="text-3xl font-bold mb-2">{currentBoard.answer}</h2>
-              <p className="text-muted-foreground">Facit avslöjat</p>
+              <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 mb-2">
+                {currentBoard.answer}
+              </h2>
+              <p className="text-white/50">Facit avslöjat</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {session.teams.map((team: Team) => {
-                const teamAnswer = team.answers.find(
-                  (a) => a.boardIndex === session.currentBoardIndex
-                );
+                const teamPlayers = session.players.filter((p: Player) => p.teamId === team.id);
                 return (
-                  <Card key={team.id}>
+                  <Card key={team.id} className="bg-white/5 border-white/10">
                     <CardContent className="pt-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <div
-                          className="w-5 h-5 rounded-full"
-                          style={{ backgroundColor: team.color }}
-                        />
-                        <span className="font-bold" style={{ color: team.color }}>
-                          {team.name}
-                        </span>
-                        <span className="ml-auto font-bold">{team.score}p</span>
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: team.color }} />
+                        <span className="font-bold" style={{ color: team.color }}>{team.name}</span>
+                        <span className="ml-auto font-bold text-white">{team.score}p</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        {teamAnswer?.correct === true ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            <span className="text-green-500 font-medium">Rätt!</span>
-                          </>
-                        ) : teamAnswer?.correct === false ? (
-                          <>
-                            <XCircle className="w-4 h-4 text-destructive" />
-                            <span className="text-destructive font-medium">Fel</span>
-                          </>
-                        ) : (
-                          <>
-                            <SkipForward className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Passade</span>
-                          </>
-                        )}
+                      <div className="flex flex-col gap-2">
+                        {teamPlayers.map((p) => {
+                          const pAnswer = p.answers.find((a: PlayerAnswer) => a.boardIndex === session.currentBoardIndex);
+                          return (
+                            <div key={p.id} className="flex items-center gap-2 text-sm">
+                              {pAnswer?.correct === true ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              ) : pAnswer?.correct === false ? (
+                                <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-white/20 shrink-0" />
+                              )}
+                              <span className="text-white/70 flex-1">{p.name}</span>
+                              {pAnswer?.locked && (
+                                <span className="text-white/40 text-xs truncate max-w-[100px]">"{pAnswer.answer}"</span>
+                              )}
+                              {pAnswer?.pointsAwarded ? (
+                                <span className="text-emerald-400 font-bold text-xs">+{pAnswer.pointsAwarded}p</span>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
-                      {teamAnswer?.answer && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Svar: "{teamAnswer.answer}"
-                        </p>
-                      )}
                     </CardContent>
                   </Card>
                 );
@@ -913,7 +903,7 @@ export default function AdminPage() {
                 <Button
                   data-testid="button-next-question"
                   onClick={handleNextQuestion}
-                  className="gap-2"
+                  className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0"
                 >
                   <ArrowRight className="w-4 h-4" />
                   Nästa fråga
@@ -922,7 +912,7 @@ export default function AdminPage() {
                 <Button
                   data-testid="button-finish-game"
                   onClick={handleFinishGame}
-                  className="gap-2"
+                  className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0"
                 >
                   <Trophy className="w-4 h-4" />
                   Avsluta spelet
@@ -935,45 +925,50 @@ export default function AdminPage() {
         {session.gameState === "finished" && (
           <div className="flex flex-col gap-6">
             <div className="text-center">
-              <Trophy className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
-              <h2 className="text-3xl font-bold mb-2">Spelet är slut!</h2>
+              <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center mb-4">
+                <Trophy className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500 mb-2">
+                Spelet är slut!
+              </h2>
             </div>
 
-            <div className="max-w-md mx-auto w-full flex flex-col gap-3">
+            <div className="max-w-lg mx-auto w-full flex flex-col gap-3">
               {[...session.teams]
                 .sort((a, b) => b.score - a.score)
-                .map((team: Team, i: number) => (
-                  <div
-                    key={team.id}
-                    className={`flex items-center gap-4 p-4 rounded-md border ${
-                      i === 0 ? "ring-2 ring-yellow-500/30" : ""
-                    }`}
-                    style={{ borderColor: team.color + "44" }}
-                  >
-                    <span className="text-2xl font-bold text-muted-foreground w-8 text-center">
-                      {i + 1}
-                    </span>
+                .map((team: Team, i: number) => {
+                  const members = session.players.filter((p: Player) => p.teamId === team.id);
+                  return (
                     <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: team.color }}
+                      key={team.id}
+                      className={`flex items-center gap-4 p-4 rounded-md ${
+                        i === 0 ? "ring-2 ring-amber-500/40" : ""
+                      }`}
+                      style={{ backgroundColor: team.color + "15", border: `1px solid ${team.color}33` }}
                     >
-                      {i === 0 && <Trophy className="w-5 h-5 text-white" />}
-                    </div>
-                    <div className="flex-1">
-                      <span className="font-bold" style={{ color: team.color }}>{team.name}</span>
-                      <div className="text-xs text-muted-foreground">
-                        {session.players.filter((p: Player) => p.teamId === team.id).map((p: Player) => p.name).join(", ")}
+                      <span className="text-2xl font-bold text-white/40 w-8 text-center">{i + 1}</span>
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: team.color }}
+                      >
+                        {i === 0 && <Trophy className="w-5 h-5 text-white" />}
                       </div>
+                      <div className="flex-1">
+                        <span className="font-bold" style={{ color: team.color }}>{team.name}</span>
+                        <div className="text-xs text-white/40">
+                          {members.map((p: Player) => `${p.name} (${p.score}p)`).join(", ")}
+                        </div>
+                      </div>
+                      <span className="text-xl font-bold text-white">{team.score}p</span>
                     </div>
-                    <span className="text-xl font-bold">{team.score}p</span>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
 
             <Button
               data-testid="button-reset"
               variant="outline"
-              className="self-center gap-2"
+              className="self-center gap-2 border-white/20 text-white"
               onClick={handleResetToLobby}
             >
               <RotateCcw className="w-4 h-4" />

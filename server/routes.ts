@@ -57,21 +57,11 @@ export async function registerRoutes(
 
         const session = await storage.getSession(sessionId);
         if (!session) return;
-        const playerTeam = session.teams.find((t) => t.players.includes(playerId));
-        if (!playerTeam || playerTeam.id !== msg.teamId) return;
+        const player = session.players.find((p) => p.id === playerId);
+        if (!player || !player.teamId) return;
 
-        if (msg.type === "lock_answer" && msg.teamId && msg.answer) {
-          await storage.lockAnswer(sessionId, msg.teamId, msg.answer);
-          broadcastToSession(sessionId);
-        }
-
-        if (msg.type === "pass" && msg.teamId) {
-          await storage.passTeam(sessionId, msg.teamId);
-          broadcastToSession(sessionId);
-        }
-
-        if (msg.type === "unlock" && msg.teamId) {
-          await storage.unlockAnswer(sessionId, msg.teamId);
+        if (msg.type === "lock_answer" && msg.answer) {
+          await storage.lockPlayerAnswer(sessionId, playerId, msg.answer);
           broadcastToSession(sessionId);
         }
       } catch (e) {
